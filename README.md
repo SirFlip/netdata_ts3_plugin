@@ -32,6 +32,10 @@ Run plugin in debug mode:
 `/usr/libexec/netdata/plugins.d/python.d.plugin 1 debug trace ts3`
 
 ## Version History ##
+- v0.11
+    - Added Ping Chart
+    - Added more User graphs
+    - Reworked data decoding
 - v0.10
     - Moved login into connect function
     - Added custom nickname with datetime

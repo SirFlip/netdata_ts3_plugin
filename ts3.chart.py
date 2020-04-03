@@ -32,7 +32,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # @License          : MIT
 # @Maintainer       : Jan Arnold
 # @Date             : 2020/04/03
-# @Version          : 0.10
+# @Version          : 0.11
 # @Status           : stable
 # @Usage            : Automatically processed by netdata
 # @Notes            : With default NetData installation put this file under
@@ -53,13 +53,15 @@ update_every = 1
 priority = 60000
 retries = 10
 
-ORDER = ['users', 'bandwidth_total', 'bandwidth_filetransfer', 'packetloss']
+ORDER = ['users', 'bandwidth_total', 'bandwidth_filetransfer', 'ping', 'packetloss']
 
 CHARTS = {
     'users': {
         'options': [None, 'Users online', 'users', 'Users', 'ts3.connected_user', 'line'],
         'lines': [
-            ['connected_users', 'online', 'absolute']
+            ['connected_total', 'Total', 'absolute'],
+            ['connected_users', 'Users', 'absolute'],
+            ['connected_queries', 'Queries', 'absolute']
         ]
     },
     'bandwidth_total': {
@@ -74,6 +76,12 @@ CHARTS = {
         'lines': [
             ['bandwidth_filetransfer_received', 'received', 'absolute', 1, 1000],
             ['bandwidth_filetransfer_sent', 'sent', 'absolute', -1, 1000]
+        ]
+    },
+    'ping': {
+        'options': [None, 'Average ping of all clients', 'ms', 'Ping', 'ts3.ping', 'line'],
+        'lines': [
+            ['ping', 'Ping (avg.)', 'absolute', 1, 1000]
         ]
     },
     'packetloss': {
@@ -285,51 +293,31 @@ class Service(SocketService):
 
         try:
             raw = self._get_raw_data()
-
         except (ValueError, AttributeError):
             self.error("No data received.")
-
-            return None
-
-        reg = re.compile(
-            "virtualserver_clientsonline=(\d*)|" +
-            "virtualserver_queryclientsonline=(\d*)|" +
-            "connection_bandwidth_sent_last_second_total=(\d*)|" +
-            "connection_bandwidth_received_last_second_total=(\d*)|" +
-            "connection_filetransfer_bandwidth_sent=(\d*)|" +
-            "connection_filetransfer_bandwidth_received=(\d*)|" +
-            "virtualserver_total_packetloss_speech=(\d+\.\d+)|" +
-            "virtualserver_total_packetloss_keepalive=(\d+\.\d+)|" +
-            "virtualserver_total_packetloss_control=(\d+\.\d+)|" +
-            "virtualserver_total_packetloss_total=(\d+\.\d+)"
-        )
-
-        regex = reg.findall(raw)
-
-        self.debug("Regex:")
-        self.debug(str(regex))
-        self.debug("Regex end")
-
-        if not regex:
-            self.error("Information could not be extracted")
             return None
 
         try:
+            d = dict(x.split("=", 1) if "=" in x else (x, "") for x in raw.split("\n\r")[0].split(" "))
             # Clients and query clients connected.
-            connected_users = int(regex[0][0]) - int(regex[1][1])
-            data["connected_users"] = connected_users
+            data["connected_total"] = int(d["virtualserver_clientsonline"])
+            data["connected_queries"] = int(d["virtualserver_queryclientsonline"])
+            data["connected_users"] = data["connected_total"] - data["connected_queries"]
+
+            # Ping
+            data["ping"] = float(d["virtualserver_total_ping"]) * 1000
 
             # Bandwidth info from server in bytes/s.
-            data["bandwidth_total_sent"] = int(regex[8][2])
-            data["bandwidth_total_received"] = int(regex[9][3])
-            data["bandwidth_filetransfer_sent"] = int(regex[6][4])
-            data["bandwidth_filetransfer_received"] = int(regex[7][5])
+            data["bandwidth_total_sent"] = int(d["connection_bandwidth_sent_last_second_total"])
+            data["bandwidth_total_received"] = int(d["connection_bandwidth_received_last_second_total"])
+            data["bandwidth_filetransfer_sent"] = int(d["connection_filetransfer_bandwidth_sent"])
+            data["bandwidth_filetransfer_received"] = int(d["connection_filetransfer_bandwidth_received"])
 
             # The average packet loss.
-            data["packetloss_speech"] = float(regex[2][6]) * 100000
-            data["packetloss_keepalive"] = float(regex[3][7]) * 100000
-            data["packetloss_control"] = float(regex[4][8]) * 100000
-            data["packetloss_total"] = float(regex[5][9]) * 100000
+            data["packetloss_speech"] = float(d["virtualserver_total_packetloss_speech"]) * 100000
+            data["packetloss_keepalive"] = float(d["virtualserver_total_packetloss_keepalive"]) * 100000
+            data["packetloss_control"] = float(d["virtualserver_total_packetloss_control"]) * 100000
+            data["packetloss_total"] = float(d["virtualserver_total_packetloss_total"]) * 100000
 
             self.debug("data:")
             self.debug(data)

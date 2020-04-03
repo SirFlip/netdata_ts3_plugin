@@ -31,8 +31,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # @Copyright        : Copyright (C) 2016-2017 Jan Arnold
 # @License          : MIT
 # @Maintainer       : Jan Arnold
-# @Date             : 2018/10/02
-# @Version          : 0.9
+# @Date             : 2020/04/03
+# @Version          : 0.10
 # @Status           : stable
 # @Usage            : Automatically processed by netdata
 # @Notes            : With default NetData installation put this file under
@@ -40,7 +40,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #                   : /etc/netdata/python.d/
 # @Python_version   : >3.6.2 or >2.7.3
 """
-
 import os
 import re
 import select
@@ -99,7 +98,6 @@ class Service(SocketService):
         self.unix_socket = None
         self._keep_alive = True
         self.request = "serverinfo\n"
-        self.loggedIn = False
 
         # Chart information handled by netdata.
         self.order = ORDER
@@ -169,6 +167,22 @@ class Service(SocketService):
 
         return True
 
+    def _connect(self):
+        super(Service, self)._connect()
+        try:
+            self._sock.send("login {0} {1}\n".format(self.user, self.passwd).encode())
+            self._receive()
+            self._sock.send("use sid={0}\n".format(self.sid).encode())
+            self._receive()
+        except Exception as e:
+            self._disconnect()
+            self.error(
+                str(e),
+                "used configuration: host:", str(self.host),
+                "port:", str(self.port),
+                "socket:", str(self.unix_socket)
+            )
+
     def _send(self, request=None):
         """
         Send request.
@@ -177,16 +191,8 @@ class Service(SocketService):
         # Send request if it is needed
         if self.request != "".encode():
             try:
-                if not self.loggedIn:
-                    self._sock.send("login {0} {1}\n".format(self.user, self.passwd).encode())
-                    self._receive()
-                    self._sock.send("use sid={0}\n".format(self.sid).encode())
-                    self._receive()
-                    self.loggedIn = True
                 self._sock.send(self.request)
-
             except Exception as e:
-                self.loggedIn = False
                 self._disconnect()
                 self.error(
                     str(e),
@@ -265,7 +271,9 @@ class Service(SocketService):
 
         regex = reg.findall(raw)
 
+        self.debug("Regex:")
         self.debug(str(regex))
+        self.debug("Regex end")
 
         if regex == []:
             self.error("Information could not be extracted")
@@ -287,6 +295,10 @@ class Service(SocketService):
             data["packetloss_keepalive"] = float(regex[3][7]) * 100000
             data["packetloss_control"] = float(regex[4][8]) * 100000
             data["packetloss_total"] = float(regex[5][9]) * 100000
+
+            self.debug("data:")
+            self.debug(data)
+            self.debug("data end")
 
         except Exception as e:
             self.error(str(e))

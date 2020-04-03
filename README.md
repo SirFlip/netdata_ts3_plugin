@@ -32,7 +32,8 @@ Run plugin in debug mode:
 `/usr/libexec/netdata/plugins.d/python.d.plugin 1 debug trace ts3`
 
 ## Version History ##
-
+- v0.10
+    - Moved login into connect function
 - v0.9
     - Avoid login with every query and subsequently filling up teamspeaks query log
 - v0.8

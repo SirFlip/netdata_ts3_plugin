@@ -99,6 +99,7 @@ class Service(SocketService):
         self.passwd = ""
         self.sid = 1
         self.nickname = "netdata"
+        self.channel_id = None
 
         # Connection socket settings.
         self.unix_socket = None
@@ -154,6 +155,11 @@ class Service(SocketService):
             self.nickname = "netdata"
             self.debug("No nickname specified. Using: '{0}'".format(self.nickname))
 
+        try:
+            self.channel_id = self.configuration['channel_id']
+        except KeyError:
+            self.debug("No Channel-ID specified. Stay in default")
+
         # Check once if TS3 is running when host is localhost.
         if self.host in ['localhost', '127.0.0.1']:
             ts3_running = False
@@ -183,15 +189,20 @@ class Service(SocketService):
     def _connect(self):
         super(Service, self)._connect()
         try:
-            self._sock.send("login {0} {1}\n".format(self.user, self.passwd).encode())
+            self._send("login {0} {1}\n".format(self.user, self.passwd))
             self._receive()
-            self._sock.send("use sid={0}\n".format(self.sid).encode())
+            self._send("use sid={0}\n".format(self.sid))
             self._receive()
-            self._sock.send("clientupdate client_nickname={0}_{1}\n"
-                            .format(self.nickname, datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
-                            .encode()
-                            )
+            self._send("clientupdate client_nickname={0}_{1}\n"
+                       .format(self.nickname, datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
+                       )
             self._receive()
+            if self.channel_id:
+                self._send("whoami\n")
+                clid = re.compile("client_id=(\d*)").findall(self._receive())[0]
+                self._send("clientmove clid={0} cid={1}\n".format(clid, self.channel_id))
+                self._receive()
+
         except Exception as e:
             self._disconnect()
             self.error(
@@ -201,6 +212,11 @@ class Service(SocketService):
                 "socket:", str(self.unix_socket)
             )
 
+    def _disconnect(self):
+        self._send("quit\n".encode())
+        self._receive()
+        super(Service, self)._disconnect()
+
     def _send(self, request=None):
         """
         Send request.
@@ -209,7 +225,8 @@ class Service(SocketService):
         # Send request if it is needed
         if self.request != "".encode():
             try:
-                self._sock.send(self.request)
+                self.debug("TX: {}".format(request or self.request).strip())
+                self._sock.send(request or self.request)
             except Exception as e:
                 self._disconnect()
                 self.error(
@@ -246,7 +263,7 @@ class Service(SocketService):
                 if len(buf) == 0 or buf is None:  # handle server disconnect
                     break
 
-                self.debug(str(buf))
+                self.debug("RX: {}".format(str(buf)).strip())
                 data += buf.decode("utf-8")
 
                 if self._check_raw_data(data):
@@ -326,7 +343,7 @@ class Service(SocketService):
         return data
 
     def _check_raw_data(self, data):
-        if data.endswith("msg=ok\n\r"):
+        if data.endswith("msg=ok\n\r") or data.endswith("msg=invalid\\schannelID\n\r"):
             return True
 
         else:

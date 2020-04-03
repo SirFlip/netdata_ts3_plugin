@@ -95,6 +95,10 @@ class Service(SocketService):
         # Default TeamSpeak Server connection settings.
         self.host = "127.0.0.1"
         self.port = "10011"
+        self.user = ""
+        self.passwd = ""
+        self.sid = 1
+        self.nickname = "netdata"
 
         # Connection socket settings.
         self.unix_socket = None
@@ -152,21 +156,21 @@ class Service(SocketService):
 
         # Check once if TS3 is running when host is localhost.
         if self.host in ['localhost', '127.0.0.1']:
-            TS3_running = False
+            ts3_running = False
 
             pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
 
             for pid in pids:
                 try:
                     if b'ts3server' in open(os.path.join('/proc', pid, 'cmdline').encode(), 'rb').read():
-                        TS3_running = True
+                        ts3_running = True
 
                         break
 
                 except IOError as e:
                     self.error(e)
 
-            if TS3_running is False:
+            if ts3_running is False:
                 self.error("No local TeamSpeak server running. Disabling plugin...")
 
                 return False
@@ -289,7 +293,7 @@ class Service(SocketService):
         self.debug(str(regex))
         self.debug("Regex end")
 
-        if regex == []:
+        if not regex:
             self.error("Information could not be extracted")
             return None
 

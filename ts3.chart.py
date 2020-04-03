@@ -42,6 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 import os
 import re
+from datetime import datetime
+
 import select
 
 from bases.FrameworkServices.SocketService import SocketService
@@ -141,6 +143,13 @@ class Service(SocketService):
             self.sid = 1
             self.debug("No sid specified. Using: '{0}'".format(self.sid))
 
+        try:
+            self.nickname = self.configuration['nickname']
+
+        except KeyError:
+            self.nickname = "netdata"
+            self.debug("No nickname specified. Using: '{0}'".format(self.nickname))
+
         # Check once if TS3 is running when host is localhost.
         if self.host in ['localhost', '127.0.0.1']:
             TS3_running = False
@@ -173,6 +182,11 @@ class Service(SocketService):
             self._sock.send("login {0} {1}\n".format(self.user, self.passwd).encode())
             self._receive()
             self._sock.send("use sid={0}\n".format(self.sid).encode())
+            self._receive()
+            self._sock.send("clientupdate client_nickname={0}_{1}\n"
+                            .format(self.nickname, datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
+                            .encode()
+                            )
             self._receive()
         except Exception as e:
             self._disconnect()
